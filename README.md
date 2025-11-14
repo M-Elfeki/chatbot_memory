@@ -26,30 +26,39 @@ A Python-based chatbot system that integrates GPT-OSS reasoning model with seman
   - Embedding API on CUDA:7 (port 8001)
   - Models pre-loaded at startup for minimal latency
 
+- **Interactive Chat UI**: Beautiful Gradio-based web interface with:
+  - Real-time streaming responses
+  - Automatic tool usage (web search and memory)
+  - Reasoning chain visualization
+  - Multi-turn conversation support
+  - Persistent chat history
+
 ## Project Structure
 
 ```
 chatbot_memory/
 ├── client.py              # GPT-OSS client with tool support
 ├── server.py              # Unified server launcher (GPT-OSS + Embedding API)
-├── embedding_server.py     # Embedding API server (Qwen/Qwen3-Embedding-8B)
-├── tools/                  # Tool implementations
+├── embedding_server.py    # Embedding API server (Qwen/Qwen3-Embedding-8B)
+├── chat_ui.py            # Interactive Gradio chat UI
+├── tools/                 # Tool implementations
 │   ├── __init__.py
 │   ├── memory_tool.py     # Semantic memory implementation
 │   ├── web_search_tool.py # Web search implementation
 │   └── unified_executor.py # Unified tool executor
-├── examples/               # Example scripts
-│   ├── minimal_example.py  # Minimal example with all tools (RECOMMENDED)
+├── examples/              # Example scripts
+│   ├── minimal_example.py  # Minimal example with all tools
 │   ├── memory_example.py   # Memory-only example
 │   └── web_search_example.py # Web search-only example
-├── tests/                  # Test suites
+├── tests/                 # Test suites
 │   ├── test_memory_basic.py
 │   ├── test_memory_tool.py
 │   ├── test_memory_integration.py
 │   ├── test_memory_latency.py
 │   ├── test_llm_memory_integration.py
 │   └── test_llm_memory_integration_comprehensive.py
-└── README.md             # This file
+├── requirements_ui.txt    # UI dependencies (Gradio, etc.)
+└── README.md              # This file
 ```
 
 ## Requirements
@@ -71,7 +80,11 @@ conda activate genai_dev
 
 2. Install required dependencies:
 ```bash
+# Core dependencies
 pip install flask sentence-transformers requests faiss-cpu beautifulsoup4 duckduckgo-search
+
+# UI dependencies (for chat_ui.py)
+pip install -r requirements_ui.txt
 ```
 
 3. Ensure you have vLLM installed and GPT-OSS model available for the server.
@@ -90,7 +103,26 @@ The server will start:
 - GPT-OSS-20B on `http://localhost:8000` (CUDA:6)
 - Embedding API on `http://localhost:8001` (CUDA:7) with Qwen/Qwen3-Embedding-8B
 
-### Using the Minimal Example (Recommended)
+### Using the Interactive Chat UI (Recommended)
+
+The chat UI provides a beautiful web interface with streaming, reasoning visualization, and automatic tool usage:
+
+```bash
+# Start the chat UI
+python chat_ui.py
+```
+
+Then open your browser to `http://localhost:7860`
+
+**UI Features:**
+- 🌐 **Web Search**: Automatically searches the web when needed
+- 💾 **Memory Store**: Stores information in semantic memory
+- 🔍 **Memory Retrieve**: Retrieves relevant memories automatically
+- 🧠 **Reasoning Chain**: View the model's thinking process separately
+- ⚙️ **Controls**: Adjust reasoning level, temperature, and top-p in real-time
+- 💬 **Multi-turn**: Maintains conversation context across turns
+
+### Using the Command-Line Examples
 
 The minimal example enables both memory and web search tools automatically:
 
@@ -157,6 +189,13 @@ The system is optimized for minimal latency:
 2. **Query Time**: No model loading - embeddings generated via HTTP API
 3. **Tool Execution**: Unified executor routes to appropriate tool handler
 4. **Memory Storage**: FAISS index stored locally, embeddings generated on server
+5. **Chat UI**: Gradio-based interface with real-time streaming and tool visualization
+
+## Data Storage
+
+- **Memory Store**: `memory_store/` - FAISS index and metadata (auto-created)
+- **Chat History**: `chat_history/` - Conversation history JSON (auto-created)
+- Both directories are gitignored and should not be committed
 
 ## License
 

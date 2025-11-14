@@ -43,3 +43,9 @@ Thumbs.db
 .coverage
 htmlcov/
 
+# Data directories (should not be committed)
+memory_store/
+chat_history/
+*.faiss
+*.pkl
+

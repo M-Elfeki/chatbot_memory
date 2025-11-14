@@ -5,6 +5,7 @@ Supports top_p, temperature, reasoning levels, tools, and streaming.
 """
 import requests
 import json
+import re
 from typing import Optional, List, Dict, Any, Iterator, Callable
 
 
@@ -440,18 +441,112 @@ def generate_with_tools_stream(
                 
                 tool_calls = final_tool_calls
             
-            # Add assistant message to history
-            messages.append({
-                "role": "assistant",
-                "content": accumulated_content,
-                "tool_calls": tool_calls if tool_calls else None
-            })
+            # Check reasoning content for tool call patterns if no tool calls found yet
+            # This handles cases where model outputs tool calls in reasoning but finish_reason is "stop"
+            # Do this BEFORE adding assistant message so tool calls are properly associated
+            if not tool_calls and finish_reason == "stop" and accumulated_reasoning:
+                # Try to extract tool calls from reasoning content
+                reasoning_text = accumulated_reasoning.lower()
+                # Look for memory_store or memory_retrieve patterns
+                if "memory_store" in reasoning_text or "memory_retrieve" in reasoning_text:
+                    # Helper function to extract JSON object after a keyword
+                    def extract_json_after_keyword(text, keyword):
+                        """Extract JSON object that appears after a keyword."""
+                        # Find all occurrences of the keyword
+                        keyword_lower = keyword.lower()
+                        text_lower = text.lower()
+                        idx = text_lower.find(keyword_lower)
+                        if idx == -1:
+                            return None
+                        
+                        # Look for JSON object starting after the keyword
+                        # Skip the keyword and any whitespace/punctuation
+                        search_start = idx + len(keyword)
+                        # Skip whitespace, dots, parentheses, colons
+                        while search_start < len(text) and text[search_start] in ' \t\n.:()':
+                            search_start += 1
+                        
+                        # Find the first opening brace
+                        brace_start = text.find('{', search_start)
+                        if brace_start == -1:
+                            return None
+                        
+                        # Extract JSON by matching braces
+                        brace_count = 0
+                        brace_end = brace_start
+                        for i in range(brace_start, len(text)):
+                            if text[i] == '{':
+                                brace_count += 1
+                            elif text[i] == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    brace_end = i + 1
+                                    break
+                        
+                        if brace_count == 0:
+                            json_str = text[brace_start:brace_end]
+                            try:
+                                # Validate it's valid JSON
+                                json.loads(json_str)
+                                return json_str
+                            except (json.JSONDecodeError, ValueError):
+                                return None
+                        return None
+                    
+                    # Try to extract memory_store call
+                    if "memory_store" in reasoning_text:
+                        json_str = extract_json_after_keyword(accumulated_reasoning, "memory_store")
+                        if json_str:
+                            try:
+                                args = json.loads(json_str)
+                                if "text" in args:  # Validate it's a memory_store call
+                                    tool_calls.append({
+                                        "id": f"call_reasoning_{len(tool_calls)}",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "memory_store",
+                                            "arguments": json_str
+                                        }
+                                    })
+                                    # Don't call on_tool_call here - it will be called during execution
+                            except (json.JSONDecodeError, ValueError):
+                                pass
+                    
+                    # Try to extract memory_retrieve call
+                    if "memory_retrieve" in reasoning_text and not tool_calls:
+                        json_str = extract_json_after_keyword(accumulated_reasoning, "memory_retrieve")
+                        if json_str:
+                            try:
+                                args = json.loads(json_str)
+                                if "query" in args:  # Validate it's a memory_retrieve call
+                                    tool_calls.append({
+                                        "id": f"call_reasoning_{len(tool_calls)}",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "memory_retrieve",
+                                            "arguments": json_str
+                                        }
+                                    })
+                                    # Don't call on_tool_call here - it will be called during execution
+                            except (json.JSONDecodeError, ValueError):
+                                pass
+                    
+                    # If we found tool calls in reasoning, treat as tool_calls finish reason
+                    if tool_calls:
+                        finish_reason = "tool_calls"
             
             # If we detected tool calls in reasoning but finish_reason is not "tool_calls",
             # treat it as if we need to execute tools (model output tool call in reasoning)
             if tool_calls and finish_reason != "tool_calls":
                 # Model output tool call in reasoning tokens, treat as tool_calls finish reason
                 finish_reason = "tool_calls"
+            
+            # Add assistant message to history (after detecting tool calls from reasoning)
+            messages.append({
+                "role": "assistant",
+                "content": accumulated_content,
+                "tool_calls": tool_calls if tool_calls else None
+            })
             
             if not tool_calls or finish_reason != "tool_calls":
                 # Final response received

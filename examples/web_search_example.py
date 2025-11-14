@@ -3,11 +3,11 @@
 Minimal example for web search with GPT-OSS.
 
 Usage:
-    python minimal_web_search.py "your prompt here" [--no-stream] [--temp TEMP] [--top-p TOP_P] [--reasoning-level LEVEL]
+    python examples/minimal_web_search.py "your prompt here" [--no-stream] [--temp TEMP] [--top-p TOP_P] [--reasoning-level LEVEL]
 
 Example:
-    python minimal_web_search.py "What's the weather in San Francisco today?"
-    python minimal_web_search.py "Search for Python tutorials" --temp 0.8 --top-p 0.9 --reasoning-level medium
+    python examples/minimal_web_search.py "What's the weather in San Francisco today?"
+    python examples/minimal_web_search.py "Search for Python tutorials" --temp 0.8 --top-p 0.9 --reasoning-level medium
 """
 
 import sys
@@ -15,11 +15,11 @@ import os
 import argparse
 import json
 
-# Add parent directory to path to import client and web_search_tool
+# Add parent directory to path to import client
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from client import generate_with_tools_stream, generate_with_tools
-from web_search_tool import WEB_SEARCH_TOOL, web_search_executor
+from tools.web_search_tool import WEB_SEARCH_TOOL, web_search_executor
 
 
 def main():
@@ -131,23 +131,7 @@ def main():
     print("\n\n" + "=" * 80)
     print("RESULTS")
     print("=" * 80)
-    
-    # Thinking tokens
-    if thinking_content:
-        print("\n[THINKING TOKENS]")
-        print("-" * 80)
-        print(thinking_content.strip())
-    else:
-        print("\n[THINKING TOKENS] (none)")
-    
-    # Output tokens
-    if output_content:
-        print("\n[OUTPUT TOKENS]")
-        print("-" * 80)
-        print(output_content.strip())
-    else:
-        print("\n[OUTPUT TOKENS] (none)")
-    
+        
     # Tool calls - prefer tool_calls_made from callbacks, fallback to result
     display_calls = tool_calls_made if tool_calls_made else all_tool_calls
     if display_calls:
@@ -177,6 +161,23 @@ def main():
               f"completion: {usage.get('completion_tokens', 'N/A')})")
     
     print("=" * 80)
+
+
+    # Thinking tokens
+    if thinking_content:
+        print("\n[THINKING TOKENS]")
+        print("-" * 80)
+        print(thinking_content.strip())
+    else:
+        print("\n[THINKING TOKENS] (none)")
+    
+    # Output tokens
+    if output_content:
+        print("\n[OUTPUT TOKENS]")
+        print("-" * 80)
+        print(output_content.strip())
+    else:
+        print("\n[OUTPUT TOKENS] (none)")
 
 
 if __name__ == "__main__":

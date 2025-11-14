@@ -42,6 +42,13 @@ chatbot_memory/
 │   ├── minimal_example.py  # Minimal example with all tools (RECOMMENDED)
 │   ├── memory_example.py   # Memory-only example
 │   └── web_search_example.py # Web search-only example
+├── tests/                  # Test suites
+│   ├── test_memory_basic.py
+│   ├── test_memory_tool.py
+│   ├── test_memory_integration.py
+│   ├── test_memory_latency.py
+│   ├── test_llm_memory_integration.py
+│   └── test_llm_memory_integration_comprehensive.py
 └── README.md             # This file
 ```
 

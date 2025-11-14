@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Embedding API server that pre-loads both GPT-OSS and Qwen embedding models.
+Embedding API server that pre-loads Qwen/Qwen3-Embedding-8B model.
 Provides HTTP endpoints for embedding generation to minimize query-time latency.
 """
 import os

@@ -13,7 +13,7 @@ import os
 import sys
 import json
 import gradio as gr
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple
 from datetime import datetime
 import threading
 import queue
@@ -22,8 +22,8 @@ import queue
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from client import generate_with_tools_stream
-from tools.memory_tool import MEMORY_STORE_TOOL, MEMORY_RETRIEVE_TOOL, memory_executor
-from tools.web_search_tool import WEB_SEARCH_TOOL, web_search_executor
+from tools.memory_tool import MEMORY_STORE_TOOL, MEMORY_RETRIEVE_TOOL
+from tools.web_search_tool import WEB_SEARCH_TOOL
 from tools.unified_executor import unified_tool_executor
 
 
@@ -141,12 +141,14 @@ class StreamingChatClient:
                 else:
                     conversation_context += "Assistant: [No response yet]\n\n"
         
-        conversation_context += f"Current question:\nUser: {message}\nAssistant:"
+        conversation_context += (
+            f"Current question:\nUser: {message}\nAssistant:"
+        )
         
         # Accumulators for streaming
         reasoning_buffer = []
         content_buffer = []
-        tool_calls_made = []
+        tool_calls_made = []  # Track unique tool calls
         tool_status_updates = []
         
         # Create a queue for streaming updates
@@ -163,24 +165,44 @@ class StreamingChatClient:
             content_buffer.append(delta)
             update_queue.put(("content", "".join(content_buffer)))
         
+        # Track unique tool calls to avoid duplicates
+        seen_tool_keys = set()
+        
         def on_tool_call(tool_name: str, arguments: Dict[str, Any]):
             """Callback when tool is called."""
-            tool_calls_made.append({"name": tool_name, "arguments": arguments})
-            tool_status = ""
+            # Create a unique key for this tool call to avoid duplicates
             if tool_name == "web_search":
-                query = arguments.get('query', '')[:50]
-                tool_status = f"🌐 Searching web: {query}..."
+                tool_key = f"web_search:{arguments.get('query', '')}"
             elif tool_name == "memory_store":
-                text = arguments.get('text', '')[:50]
-                tool_status = f"💾 Storing memory: {text}..."
+                tool_key = f"memory_store:{arguments.get('text', '')[:30]}"
             elif tool_name == "memory_retrieve":
-                query = arguments.get('query', '')[:50]
-                tool_status = f"🔍 Retrieving memory: {query}..."
+                tool_key = f"memory_retrieve:{arguments.get('query', '')}"
             else:
-                tool_status = f"🔧 Using {tool_name}"
+                tool_key = f"{tool_name}:{str(arguments)[:30]}"
             
-            tool_status_updates.append(tool_status)
-            update_queue.put(("tool", "\n".join(tool_status_updates)))
+            # Only add if we haven't seen this exact tool call before
+            if tool_key not in seen_tool_keys:
+                seen_tool_keys.add(tool_key)
+                tool_calls_made.append({
+                    "name": tool_name,
+                    "arguments": arguments
+                })
+                
+                # Create clean status message
+                if tool_name == "web_search":
+                    query = arguments.get('query', '')[:40]
+                    tool_status = f"🌐 Searching: {query}"
+                elif tool_name == "memory_store":
+                    text = arguments.get('text', '')[:40]
+                    tool_status = f"💾 Storing: {text}"
+                elif tool_name == "memory_retrieve":
+                    query = arguments.get('query', '')[:40]
+                    tool_status = f"🔍 Retrieving: {query}"
+                else:
+                    tool_status = f"🔧 {tool_name}"
+                
+                tool_status_updates.append(tool_status)
+                update_queue.put(("tool", "\n".join(tool_status_updates)))
         
         # Start streaming in a thread
         result_container = {"result": None, "error": None}
@@ -253,8 +275,14 @@ class StreamingChatClient:
             return
         
         # Get final content
-        final_content = "".join(content_buffer) if content_buffer else result.get("content", "")
-        final_reasoning = "".join(reasoning_buffer) if reasoning_buffer else result.get("reasoning_content", "")
+        final_content = (
+            "".join(content_buffer) if content_buffer
+            else result.get("content", "")
+        )
+        final_reasoning = (
+            "".join(reasoning_buffer) if reasoning_buffer
+            else result.get("reasoning_content", "")
+        )
         
         # Add assistant message to history
         self.chat_history.add_message(
@@ -272,17 +300,24 @@ class StreamingChatClient:
         
         # Add tool results to history
         tool_results = result.get("tool_results", [])
+        tool_calls_list = result.get("tool_calls", [])
         for i, tool_result in enumerate(tool_results):
-            tool_call = result.get("tool_calls", [])[i] if i < len(result.get("tool_calls", [])) else {}
+            tool_call = (
+                tool_calls_list[i] if i < len(tool_calls_list) else {}
+            )
             self.chat_history.add_message(
                 "tool",
                 tool_result.get("result", ""),
-                metadata={"tool_call_id": tool_call.get("id", f"call_{i}")}
+                metadata={
+                    "tool_call_id": tool_call.get("id", f"call_{i}")
+                }
             )
         
         # Final update
         updated_history = history + [(message, final_content)]
-        final_tool_status = "\n".join(tool_status_updates) if tool_status_updates else ""
+        final_tool_status = (
+            "\n".join(tool_status_updates) if tool_status_updates else ""
+        )
         yield updated_history, final_reasoning, final_tool_status
 
 
@@ -290,113 +325,134 @@ def create_ui():
     """Create and launch the Gradio UI."""
     client = StreamingChatClient()
     
-    # Custom CSS for better styling
+    # Elegant, simple CSS
     custom_css = """
     .reasoning-box {
-        background-color: #f5f5f5;
-        border-left: 3px solid #4CAF50;
-        padding: 10px;
-        margin: 10px 0;
-        border-radius: 5px;
-        font-family: 'Courier New', monospace;
-        font-size: 0.9em;
+        background-color: #fafafa;
+        border-left: 2px solid #888;
+        padding: 12px;
+        margin: 8px 0;
+        border-radius: 4px;
+        font-family: 'Monaco', 'Menlo', monospace;
+        font-size: 0.85em;
+        color: #555;
+        line-height: 1.5;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        max-height: 400px;
     }
     .tool-status {
-        background-color: #e3f2fd;
-        border-left: 3px solid #2196F3;
-        padding: 8px;
-        margin: 5px 0;
-        border-radius: 5px;
-        font-size: 0.85em;
+        background-color: #f8f8f8;
+        border-left: 2px solid #666;
+        padding: 10px;
+        margin: 6px 0;
+        border-radius: 4px;
+        font-size: 0.9em;
+        color: #444;
+        line-height: 1.6;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        max-height: 300px;
+    }
+    .header-text {
+        font-size: 1.1em;
+        color: #333;
+        margin-bottom: 8px;
     }
     """
     
     with gr.Blocks(css=custom_css, theme=gr.themes.Soft()) as demo:
         gr.Markdown("""
-        # 🤖 GPT-OSS Multi-Turn Chat
-        
-        Chat with GPT-OSS reasoning model with automatic web browsing and memory tools.
-        - **Always streams** responses in real-time
-        - **Automatically uses** web search and memory tools as needed
-        - **Saves** multi-turn conversation history
-        - **Shows** reasoning chain separately from output
+        <div class="header-text">
+        <h1 style="font-size: 1.8em; margin-bottom: 8px; color: #222;">GPT-OSS Chat</h1>
+        <p style="color: #666; font-size: 0.95em; margin: 0;">
+        Streaming chat with web search and memory</p>
+        </div>
         """)
         
         with gr.Row():
             with gr.Column(scale=3):
                 chatbot = gr.Chatbot(
-                    label="Conversation",
-                    height=500,
-                    show_label=True,
+                    label="",
+                    height=550,
+                    show_label=False,
                     container=True,
                     bubble_full_width=False
                 )
                 
                 with gr.Row():
                     msg = gr.Textbox(
-                        label="Your message",
-                        placeholder="Type your message here...",
+                        label="",
+                        placeholder="Type your message... (Press Enter to send)",
                         scale=4,
-                        lines=2
+                        lines=1,
+                        show_label=False,
+                        max_lines=1
                     )
-                    submit_btn = gr.Button("Send", variant="primary", scale=1)
+                    submit_btn = gr.Button("Send", variant="primary", scale=1, size="lg")
                 
                 with gr.Row():
-                    clear_btn = gr.Button("Clear History", variant="stop")
-                    save_btn = gr.Button("Save Chat", variant="secondary")
+                    clear_btn = gr.Button("Clear", variant="secondary", scale=1)
             
             with gr.Column(scale=2):
-                gr.Markdown("### ⚙️ Settings")
+                # Collapsible settings
+                with gr.Accordion(
+                    "⚙️ Settings", open=False
+                ):
+                    reasoning_level = gr.Radio(
+                        choices=["low", "medium", "high"],
+                        value="medium",
+                        label="Reasoning Level",
+                        info="Amount of reasoning tokens"
+                    )
+                    
+                    temperature = gr.Slider(
+                        minimum=0.0,
+                        maximum=2.0,
+                        value=0.7,
+                        step=0.1,
+                        label="Temperature",
+                        info="Randomness (0.0 = deterministic)"
+                    )
+                    
+                    top_p = gr.Slider(
+                        minimum=0.0,
+                        maximum=1.0,
+                        value=0.9,
+                        step=0.05,
+                        label="Top-p",
+                        info="Nucleus sampling"
+                    )
                 
-                reasoning_level = gr.Radio(
-                    choices=["low", "medium", "high"],
-                    value="medium",
-                    label="Reasoning Level",
-                    info="Controls the amount of reasoning tokens"
-                )
+                # Reasoning display
+                with gr.Accordion(
+                    "🧠 Reasoning", open=False
+                ):
+                    reasoning_display = gr.Textbox(
+                        label="",
+                        lines=8,
+                        max_lines=None,
+                        interactive=False,
+                        show_label=False,
+                        placeholder="Reasoning tokens...",
+                        elem_classes=["reasoning-box"],
+                        show_copy_button=True
+                    )
                 
-                temperature = gr.Slider(
-                    minimum=0.0,
-                    maximum=2.0,
-                    value=0.7,
-                    step=0.1,
-                    label="Temperature",
-                    info="Controls randomness (0.0 = deterministic, 2.0 = very random)"
-                )
-                
-                top_p = gr.Slider(
-                    minimum=0.0,
-                    maximum=1.0,
-                    value=0.9,
-                    step=0.05,
-                    label="Top-p (Nucleus Sampling)",
-                    info="Controls diversity via nucleus sampling"
-                )
-                
-                gr.Markdown("### 🧠 Reasoning Chain")
-                reasoning_display = gr.Textbox(
-                    label="",
-                    lines=8,
-                    max_lines=15,
-                    interactive=False,
-                    show_label=False,
-                    placeholder="Reasoning tokens will appear here...",
-                    elem_classes=["reasoning-box"]
-                )
-                
-                gr.Markdown("### 🔧 Tool Usage")
-                tool_status = gr.Textbox(
-                    label="",
-                    lines=5,
-                    max_lines=10,
-                    interactive=False,
-                    show_label=False,
-                    placeholder="Tool usage indicators will appear here...",
-                    elem_classes=["tool-status"]
-                )
-        
-        # State for chat history
-        chat_history_state = gr.State([])
+                # Tool usage display
+                with gr.Accordion(
+                    "🔧 Tools", open=False
+                ):
+                    tool_status = gr.Textbox(
+                        label="",
+                        lines=6,
+                        max_lines=None,
+                        interactive=False,
+                        show_label=False,
+                        placeholder="Tool usage...",
+                        elem_classes=["tool-status"],
+                        show_copy_button=True
+                    )
         
         # Event handlers
         def user_message(message, history, reasoning_lvl, temp, top_p_val):
@@ -414,12 +470,7 @@ def create_ui():
         def clear_chat():
             """Clear chat history."""
             client.chat_history.clear_history()
-            return [], "", "", ""
-        
-        def save_chat():
-            """Save current chat."""
-            client.chat_history.save_history()
-            return "Chat saved successfully!"
+            return [], "", ""
         
         # Wire up events
         submit_btn.click(
@@ -442,12 +493,7 @@ def create_ui():
         
         clear_btn.click(
             clear_chat,
-            outputs=[chatbot, msg, reasoning_display, tool_status]
-        )
-        
-        save_btn.click(
-            save_chat,
-            outputs=[gr.Textbox(visible=False)]
+            outputs=[chatbot, reasoning_display, tool_status]
         )
         
         # Load existing history on startup
@@ -477,7 +523,9 @@ def create_ui():
             return []
         
         # Load history on page load
-        demo.load(load_history, outputs=[chatbot])
+        demo.load(
+            load_history, outputs=[chatbot]
+        )
     
     return demo
 

@@ -118,9 +118,12 @@ Then open your browser to `http://localhost:7860`
 - 🌐 **Web Search**: Automatically searches the web when needed
 - 💾 **Memory Store**: Stores information in semantic memory
 - 🔍 **Memory Retrieve**: Retrieves relevant memories automatically
-- 🧠 **Reasoning Chain**: View the model's thinking process separately
-- ⚙️ **Controls**: Adjust reasoning level, temperature, and top-p in real-time
+- 🧠 **Reasoning Chain**: View the model's thinking process separately (scrollable)
+- ⚙️ **Collapsible Settings**: Adjust reasoning level, temperature, and top-p (collapsed by default)
+- 🔧 **Tool Indicators**: Visual feedback when tools are used (scrollable, deduplicated)
 - 💬 **Multi-turn**: Maintains conversation context across turns
+- ⌨️ **Keyboard Shortcuts**: Press Enter to send messages
+- 🎨 **Elegant Design**: Clean, simple interface with neutral colors
 
 ### Using the Command-Line Examples
 
